@@ -232,7 +232,7 @@ impl MyApp {
             traffic_type: 0,
             traffic_interval: String::new(),
             //set-network
-            network_architecture: 0,
+            network_architecture: 3,
             //set-wifi
             wifi_mode: 2, // default to "sniffer"
             wifi_max_connections: "1".to_string(),
@@ -1241,35 +1241,62 @@ impl MyApp {
                             use std::{thread, time::Duration};
 
                             // 1. set-traffic (only if enabled in section)
-                            if self.enable_set_traffic && self.traffic_enable {
-                                let mut cmd = String::from("set-traffic --enable");
-                                cmd.push_str(&format!(" --type={}", match self.traffic_type {
-                                    0 => "icmp",
-                                    1 => "udp",
-                                    _ => "unknown",
-                                }));
-                                if !self.traffic_interval.trim().is_empty() {
-                                    cmd.push_str(&format!(" --interval={}", self.traffic_interval.trim()));
-                                }
-                                cmd.push_str("\r\n");
-                                let _ = self.send_tx.send(cmd);
-                                thread::sleep(Duration::from_millis(150));
+                            // if self.enable_set_traffic && self.traffic_enable {
+                            //     let mut cmd = String::from("set-traffic --enable");
+                            //     cmd.push_str(&format!(" --type={}", match self.traffic_type {
+                            //         0 => "icmp",
+                            //         1 => "udp",
+                            //         _ => "unknown",
+                            //     }));
+                            //     if !self.traffic_interval.trim().is_empty() {
+                            //         cmd.push_str(&format!(" --interval={}", self.traffic_interval.trim()));
+                            //     }
+                            //     cmd.push_str("\r\n");
+                            //     let _ = self.send_tx.send(cmd);
+                            //     thread::sleep(Duration::from_millis(150));
+                            // }
+                            if self.traffic_enable {
+                            let mut cmd = String::from("set-traffic --enable");
+                            cmd.push_str(&format!(" --type={}", match self.traffic_type {
+                                0 => "icmp",
+                                1 => "udp",
+                                _ => "unknown",
+                            }));
+                            if !self.traffic_interval.trim().is_empty() {
+                                cmd.push_str(&format!(" --interval={}", self.traffic_interval.trim()));
                             }
+                            cmd.push_str("\r\n");
+                            let _ = self.send_tx.send(cmd);
+                            thread::sleep(Duration::from_millis(150));
+                        }
 
                             // 2. set-network (only if enabled in section)
-                            if self.enable_set_network {
-                                let arch = match self.network_architecture {
-                                    0 => "rsta",
-                                    1 => "rapsta",
-                                    2 => "apsta",
-                                    3 => "sniff",
-                                    _ => "",
-                                };
-                                if !arch.is_empty() {
-                                    let cmd = format!("set-network --arch={}\r\n", arch);
-                                    let _ = self.send_tx.send(cmd);
-                                    thread::sleep(Duration::from_millis(150));
-                                }
+                            // if self.enable_set_network {
+                            //     let arch = match self.network_architecture {
+                            //         0 => "rsta",
+                            //         1 => "rapsta",
+                            //         2 => "apsta",
+                            //         3 => "sniff",
+                            //         _ => "",
+                            //     };
+                            //     if !arch.is_empty() {
+                            //         let cmd = format!("set-network --arch={}\r\n", arch);
+                            //         let _ = self.send_tx.send(cmd);
+                            //         thread::sleep(Duration::from_millis(150));
+                            //     }
+                            // }
+                            // 2. set-network (always send)
+                            let arch = match self.network_architecture {
+                                0 => "rsta",
+                                1 => "rapsta",
+                                2 => "apsta",
+                                3 => "sniff",
+                                _ => "",
+                            };
+                            if !arch.is_empty() {
+                                let cmd = format!("set-network --arch={}\r\n", arch);
+                                let _ = self.send_tx.send(cmd);
+                                thread::sleep(Duration::from_millis(150));
                             }
 
                             // // 3. set-csi (only if enabled in section)
@@ -1314,46 +1341,61 @@ impl MyApp {
 
                             // 4. set-wifi (only if enabled in section)
                             if self.enable_set_wifi {
-                                let wifi_fields_filled = !self.wifi_max_connections.trim().is_empty()
-                                    || self.wifi_hide_ssid
-                                    || !self.wifi_ap_ssid.trim().is_empty()
-                                    || !self.wifi_ap_password.trim().is_empty()
-                                    || !self.wifi_sta_ssid.trim().is_empty()
-                                    || !self.wifi_sta_password.trim().is_empty()
-                                    || self.wifi_mode != 2; // 2 is "sniffer" (default)
+                                use std::{thread, time::Duration};
+                                let mode_str = match self.wifi_mode {
+                                    0 => "ap",
+                                    1 => "station",
+                                    2 => "sniffer",
+                                    3 => "ap-station",
+                                    _ => "sniffer",
+                                };
 
-                                if wifi_fields_filled {
-                                    let mut cmd = String::from("set-wifi");
-                                    cmd.push_str(&format!(" --mode={}", match self.wifi_mode {
-                                        0 => "ap",
-                                        1 => "station",
-                                        2 => "sniffer",
-                                        3 => "ap-station",
-                                        _ => "sniffer",
-                                    }));
+                                // Always send mode first
+                                let cmd = format!("set-wifi --mode={}\r\n", mode_str);
+                                let _ = self.send_tx.send(cmd);
+                                thread::sleep(Duration::from_millis(150));
+
+                                // Only send if not sniffer
+                                if self.wifi_mode != 2 {
                                     if !self.wifi_max_connections.trim().is_empty() {
-                                        cmd.push_str(&format!(" --max-connections={}", self.wifi_max_connections.trim()));
+                                        let cmd = format!("set-wifi --max-connections={}\r\n", self.wifi_max_connections.trim());
+                                        let _ = self.send_tx.send(cmd);
+                                        thread::sleep(Duration::from_millis(150));
                                     }
                                     if self.wifi_hide_ssid {
-                                        cmd.push_str(" --hide-ssid");
+                                        let cmd = "set-wifi --hide-ssid\r\n".to_string();
+                                        let _ = self.send_tx.send(cmd);
+                                        thread::sleep(Duration::from_millis(150));
                                     }
-                                    if !self.wifi_ap_ssid.trim().is_empty() {
-                                        cmd.push_str(&format!(" --ap-ssid={}", self.wifi_ap_ssid.trim()));
-                                    }
-                                    if !self.wifi_ap_password.trim().is_empty() {
-                                        cmd.push_str(&format!(" --ap-password={}", self.wifi_ap_password.trim()));
-                                    }
-                                    if !self.wifi_sta_ssid.trim().is_empty() {
-                                        cmd.push_str(&format!(" --sta-ssid={}", self.wifi_sta_ssid.trim()));
-                                    }
-                                    if !self.wifi_sta_password.trim().is_empty() {
-                                        cmd.push_str(&format!(" --sta-password={}", self.wifi_sta_password.trim()));
-                                    }
-                                    cmd.push_str("\r\n");
-                                    let _ = self.send_tx.send(cmd);
-                                    thread::sleep(Duration::from_millis(150));
                                 }
 
+                                // AP options
+                                if self.wifi_mode == 0 || self.wifi_mode == 3 {
+                                    if !self.wifi_ap_ssid.trim().is_empty() {
+                                        let cmd = format!("set-wifi --ap-ssid={}\r\n", self.wifi_ap_ssid.trim());
+                                        let _ = self.send_tx.send(cmd);
+                                        thread::sleep(Duration::from_millis(150));
+                                    }
+                                    if !self.wifi_ap_password.trim().is_empty() {
+                                        let cmd = format!("set-wifi --ap-password={}\r\n", self.wifi_ap_password.trim());
+                                        let _ = self.send_tx.send(cmd);
+                                        thread::sleep(Duration::from_millis(150));
+                                    }
+                                }
+
+                                // STA options
+                                if self.wifi_mode == 1 || self.wifi_mode == 3 {
+                                    if !self.wifi_sta_ssid.trim().is_empty() {
+                                        let cmd = format!("set-wifi --sta-ssid={}\r\n", self.wifi_sta_ssid.trim());
+                                        let _ = self.send_tx.send(cmd);
+                                        thread::sleep(Duration::from_millis(150));
+                                    }
+                                    if !self.wifi_sta_password.trim().is_empty() {
+                                        let cmd = format!("set-wifi --sta-password={}\r\n", self.wifi_sta_password.trim());
+                                        let _ = self.send_tx.send(cmd);
+                                        thread::sleep(Duration::from_millis(150));
+                                    }
+                                }
                             }
 
                             // Optionally, send "start" at the end
@@ -1361,50 +1403,72 @@ impl MyApp {
                         }
 
 
-                                                // --- Set Traffic Section ---
-                                                ui.vertical(|ui| {
-                                                    ui.heading("Set Traffic");
-                        ui.checkbox(&mut self.enable_set_traffic, "Enable Set Traffic");
-                        ui.checkbox(&mut self.traffic_enable, "Traffic Enable");
-                        ui.horizontal(|ui| {
-                            ui.label("Traffic Type:");
-                            egui::ComboBox::from_id_source("traffic_type_combo")
-                                .selected_text(match self.traffic_type {
-                                    0 => "icmp",
-                                    1 => "UDP",
-                                    _ => "Unknown",
-                                })
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut self.traffic_type, 0, "icmp");
-                                    ui.selectable_value(&mut self.traffic_type, 1, "UDP");
-                                });
+                        // --- Set Traffic Section ---
+                        ui.vertical(|ui| {
+                        //     ui.heading("Set Traffic");
+                        //     ui.checkbox(&mut self.enable_set_traffic, "Enable Set Traffic");
+                        //     ui.checkbox(&mut self.traffic_enable, "Traffic Enable");
+                        //     ui.horizontal(|ui| {
+                        //         ui.label("Traffic Type:");
+                        //         egui::ComboBox::from_id_source("traffic_type_combo")
+                        //             .selected_text(match self.traffic_type {
+                        //                 0 => "icmp",
+                        //                 1 => "UDP",
+                        //                 _ => "Unknown",
+                        //             })
+                        //             .show_ui(ui, |ui| {
+                        //                 ui.selectable_value(&mut self.traffic_type, 0, "icmp");
+                        //                 ui.selectable_value(&mut self.traffic_type, 1, "UDP");
+                        //             });
+                        //     });
+                        //     ui.horizontal(|ui| {
+                        //         ui.label("Interval (ms):");
+                        //         ui.text_edit_singleline(&mut self.traffic_interval);
+                        //     });
+                        // if ui.button("Set Traffic").clicked() && self.enable_set_traffic {
+                        //     let mut cmd = String::from("set-traffic");
+                        //     if self.traffic_enable {
+                        //         cmd.push_str(" --enable");
+                        //     }
+                        //     cmd.push_str(&format!(" --type={}", match self.traffic_type {
+                        //         0 => "icmp",
+                        //         1 => "udp",
+                        //         _ => "unknown",
+                        //     }));
+                        //     if !self.traffic_interval.trim().is_empty() {
+                        //         cmd.push_str(&format!(" --interval={}", self.traffic_interval.trim()));
+                        //     }
+                        //     cmd.push_str("\r\n");
+                        //     let _ = self.send_tx.send(cmd);
+                        // }
+                        // --- Set Traffic Section ---
+                        ui.heading("Set Traffic");
+                        ui.checkbox(&mut self.traffic_enable, "Enable Traffic");
+                        ui.add_enabled_ui(self.traffic_enable, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Traffic Type:");
+                                egui::ComboBox::from_id_source("traffic_type_combo")
+                                    .selected_text(match self.traffic_type {
+                                        0 => "icmp",
+                                        1 => "UDP",
+                                        _ => "Unknown",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut self.traffic_type, 0, "icmp");
+                                        ui.selectable_value(&mut self.traffic_type, 1, "UDP");
+                                    });
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Interval (ms):");
+                                ui.text_edit_singleline(&mut self.traffic_interval);
+                            });
                         });
-                        ui.horizontal(|ui| {
-                            ui.label("Interval (ms):");
-                            ui.text_edit_singleline(&mut self.traffic_interval);
-                        });
-                        if ui.button("Set Traffic").clicked() && self.enable_set_traffic {
-                            let mut cmd = String::from("set-traffic");
-                            if self.traffic_enable {
-                                cmd.push_str(" --enable");
-                            }
-                            cmd.push_str(&format!(" --type={}", match self.traffic_type {
-                                0 => "icmp",
-                                1 => "udp",
-                                _ => "unknown",
-                            }));
-                            if !self.traffic_interval.trim().is_empty() {
-                                cmd.push_str(&format!(" --interval={}", self.traffic_interval.trim()));
-                            }
-                            cmd.push_str("\r\n");
-                            let _ = self.send_tx.send(cmd);
-                        }
 
                             ui.add_space(16.0); // Space between sections
 
                             // --- Set Network Section ---
                             ui.heading("Set Network");
-                            ui.checkbox(&mut self.enable_set_network, "Enable Set Network");
+                            //ui.checkbox(&mut self.enable_set_network, "Enable Set Network");
                             ui.horizontal(|ui| {
                                 ui.label("Architecture:");
                                 egui::ComboBox::from_id_source("architecture_combo")

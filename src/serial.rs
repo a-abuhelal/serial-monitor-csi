@@ -387,14 +387,13 @@ fn perform_writes(
                 relative_time: Instant::now().duration_since(t_zero).as_millis() as f64,
                 absolute_time: get_epoch_ms() as f64,
                 direction: SerialDirection::Send,
-                payload: String::from("Ctrl+C (0x03)"),
+                payload: String::from("Ctrl+R (0x03)"),
             };
             raw_data_tx
                 .send(packet)
                 .expect("failed to send raw data (Ctrl+C)");
             return;
         }
-
         //end of fares habed
         if let Err(e) = serial_write(port, cmd.as_bytes()) {
             log::error!("Error sending command: {e}");
