@@ -148,6 +148,33 @@ pub struct MyApp {
     show_warning_window: WindowFeedback,
     do_not_show_clear_warning: bool,
     init: bool,
+    //new
+    //set-traffic
+    pub traffic_enable: bool,
+    pub traffic_type: usize,
+    pub traffic_interval: String,
+    // Add these for the new section:
+    //set-network
+    pub network_architecture: usize,
+    //set-wifi
+    pub wifi_mode: usize,
+    pub wifi_max_connections: String,
+    pub wifi_hide_ssid: bool,
+    pub wifi_ap_ssid: String,
+    pub wifi_ap_password: String,
+    pub wifi_sta_ssid: String,
+    pub wifi_sta_password: String,
+    //set-csi
+    pub csi_disable_lltf: bool,
+    pub csi_disable_htltf: bool,
+    pub csi_disable_stbc_htltf: bool,
+    pub csi_disable_ltf_merge: bool,
+    //start button checkboxes
+    pub enable_set_traffic: bool,
+    pub enable_set_network: bool,
+    pub enable_set_csi: bool,
+    pub enable_set_wifi: bool,
+
     #[cfg(feature = "self_update")]
     new_release: Option<Release>,
 }
@@ -199,6 +226,32 @@ impl MyApp {
         }
 
         Self {
+            //new
+            //set-traffic
+            traffic_enable: false,
+            traffic_type: 0,
+            traffic_interval: String::new(),
+            //set-network
+            network_architecture: 0,
+            //set-wifi
+            wifi_mode: 2, // default to "sniffer"
+            wifi_max_connections: "1".to_string(),
+            wifi_hide_ssid: false,
+            wifi_ap_ssid: String::new(),
+            wifi_ap_password: String::new(),
+            wifi_sta_ssid: String::new(),
+            wifi_sta_password: String::new(),
+            //set-csi
+            csi_disable_lltf: false,
+            csi_disable_htltf: false,
+            csi_disable_stbc_htltf: false,
+            csi_disable_ltf_merge: false,
+            //start button checkboxes
+            enable_set_traffic: false,
+            enable_set_network: false,
+            enable_set_csi: false,
+            enable_set_wifi: false,
+            //old
             connected_to_device: false,
             picked_path: PathBuf::new(),
             device: "".to_string(),
@@ -659,10 +712,12 @@ impl MyApp {
             if ui.button(connect_text).clicked() {
                 if let Ok(mut device) = self.device_lock.write() {
                     if self.connected_to_device {
+                        let _ = self.send_tx.send("__CTRLC__\r\n".to_string()); // send Ctrl+R to the device
                         device.name.clear();
                     } else {
                         device.name = self.serial_devices.devices[self.device_idx].name.clone();
                         device.baud_rate = self.serial_devices.devices[self.device_idx].baud_rate;
+                        let _ = self.send_tx.send("__RESET__\r\n".to_string()); // send Ctrl+R to the device
                     }
                 }
             }
@@ -1174,6 +1229,504 @@ impl MyApp {
 
                         self.draw_global_settings(ui);
                         ui.add_space(10.0);
+                    // Add this to your update function or wherever you build your right panel UI
+                        // --- Start Section ---
+                        // ui.add_space(16.0);
+                        // if ui.add_sized([RIGHT_PANEL_WIDTH * 0.9, 40.0], egui::Button::new("START")).clicked() {
+                        //     let _ = self.send_tx.send("start\r\n".to_string());
+                        // }
+                        
+                        ui.add_space(16.0);
+                        if ui.add_sized([RIGHT_PANEL_WIDTH * 0.9, 40.0], egui::Button::new("START")).clicked() {
+                            use std::{thread, time::Duration};
+
+                            // 1. set-traffic (only if enabled in section)
+                            if self.enable_set_traffic && self.traffic_enable {
+                                let mut cmd = String::from("set-traffic --enable");
+                                cmd.push_str(&format!(" --type={}", match self.traffic_type {
+                                    0 => "icmp",
+                                    1 => "udp",
+                                    _ => "unknown",
+                                }));
+                                if !self.traffic_interval.trim().is_empty() {
+                                    cmd.push_str(&format!(" --interval={}", self.traffic_interval.trim()));
+                                }
+                                cmd.push_str("\r\n");
+                                let _ = self.send_tx.send(cmd);
+                                thread::sleep(Duration::from_millis(150));
+                            }
+
+                            // 2. set-network (only if enabled in section)
+                            if self.enable_set_network {
+                                let arch = match self.network_architecture {
+                                    0 => "rsta",
+                                    1 => "rapsta",
+                                    2 => "apsta",
+                                    3 => "sniff",
+                                    _ => "",
+                                };
+                                if !arch.is_empty() {
+                                    let cmd = format!("set-network --arch={}\r\n", arch);
+                                    let _ = self.send_tx.send(cmd);
+                                    thread::sleep(Duration::from_millis(150));
+                                }
+                            }
+
+                            // // 3. set-csi (only if enabled in section)
+                            // if self.enable_set_csi && (self.csi_disable_lltf || self.csi_disable_htltf || self.csi_disable_stbc_htltf || self.csi_disable_ltf_merge) {
+                            //     let mut cmd = String::from("set-csi");
+                            //     if self.csi_disable_lltf {
+                            //         cmd.push_str(" --disable-lltf");
+                            //     }
+                            //     if self.csi_disable_htltf {
+                            //         cmd.push_str(" --disable-htltf");
+                            //     }
+                            //     if self.csi_disable_stbc_htltf {
+                            //         cmd.push_str(" --disable-stbc-htltf");
+                            //     }
+                            //     if self.csi_disable_ltf_merge {
+                            //         cmd.push_str(" --disable-ltf-merge");
+                            //     }
+                            //     cmd.push_str("\r\n");
+                            //     let _ = self.send_tx.send(cmd);
+                            //     thread::sleep(Duration::from_millis(150));
+                            // }
+
+                            // 3. set-csi (send only if at least one option is checked)
+                            if self.csi_disable_lltf || self.csi_disable_htltf || self.csi_disable_stbc_htltf || self.csi_disable_ltf_merge {
+                                let mut cmd = String::from("set-csi");
+                                if self.csi_disable_lltf {
+                                    cmd.push_str(" --disable-lltf");
+                                }
+                                if self.csi_disable_htltf {
+                                    cmd.push_str(" --disable-htltf");
+                                }
+                                if self.csi_disable_stbc_htltf {
+                                    cmd.push_str(" --disable-stbc-htltf");
+                                }
+                                if self.csi_disable_ltf_merge {
+                                    cmd.push_str(" --disable-ltf-merge");
+                                }
+                                cmd.push_str("\r\n");
+                                let _ = self.send_tx.send(cmd);
+                                thread::sleep(Duration::from_millis(150));
+                            }
+
+                            // 4. set-wifi (only if enabled in section)
+                            if self.enable_set_wifi {
+                                let wifi_fields_filled = !self.wifi_max_connections.trim().is_empty()
+                                    || self.wifi_hide_ssid
+                                    || !self.wifi_ap_ssid.trim().is_empty()
+                                    || !self.wifi_ap_password.trim().is_empty()
+                                    || !self.wifi_sta_ssid.trim().is_empty()
+                                    || !self.wifi_sta_password.trim().is_empty()
+                                    || self.wifi_mode != 2; // 2 is "sniffer" (default)
+
+                                if wifi_fields_filled {
+                                    let mut cmd = String::from("set-wifi");
+                                    cmd.push_str(&format!(" --mode={}", match self.wifi_mode {
+                                        0 => "ap",
+                                        1 => "station",
+                                        2 => "sniffer",
+                                        3 => "ap-station",
+                                        _ => "sniffer",
+                                    }));
+                                    if !self.wifi_max_connections.trim().is_empty() {
+                                        cmd.push_str(&format!(" --max-connections={}", self.wifi_max_connections.trim()));
+                                    }
+                                    if self.wifi_hide_ssid {
+                                        cmd.push_str(" --hide-ssid");
+                                    }
+                                    if !self.wifi_ap_ssid.trim().is_empty() {
+                                        cmd.push_str(&format!(" --ap-ssid={}", self.wifi_ap_ssid.trim()));
+                                    }
+                                    if !self.wifi_ap_password.trim().is_empty() {
+                                        cmd.push_str(&format!(" --ap-password={}", self.wifi_ap_password.trim()));
+                                    }
+                                    if !self.wifi_sta_ssid.trim().is_empty() {
+                                        cmd.push_str(&format!(" --sta-ssid={}", self.wifi_sta_ssid.trim()));
+                                    }
+                                    if !self.wifi_sta_password.trim().is_empty() {
+                                        cmd.push_str(&format!(" --sta-password={}", self.wifi_sta_password.trim()));
+                                    }
+                                    cmd.push_str("\r\n");
+                                    let _ = self.send_tx.send(cmd);
+                                    thread::sleep(Duration::from_millis(150));
+                                }
+
+                            }
+
+                            // Optionally, send "start" at the end
+                            let _ = self.send_tx.send("start\r\n".to_string());
+                        }
+
+
+                                                // --- Set Traffic Section ---
+                                                ui.vertical(|ui| {
+                                                    ui.heading("Set Traffic");
+                        ui.checkbox(&mut self.enable_set_traffic, "Enable Set Traffic");
+                        ui.checkbox(&mut self.traffic_enable, "Traffic Enable");
+                        ui.horizontal(|ui| {
+                            ui.label("Traffic Type:");
+                            egui::ComboBox::from_id_source("traffic_type_combo")
+                                .selected_text(match self.traffic_type {
+                                    0 => "icmp",
+                                    1 => "UDP",
+                                    _ => "Unknown",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut self.traffic_type, 0, "icmp");
+                                    ui.selectable_value(&mut self.traffic_type, 1, "UDP");
+                                });
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Interval (ms):");
+                            ui.text_edit_singleline(&mut self.traffic_interval);
+                        });
+                        if ui.button("Set Traffic").clicked() && self.enable_set_traffic {
+                            let mut cmd = String::from("set-traffic");
+                            if self.traffic_enable {
+                                cmd.push_str(" --enable");
+                            }
+                            cmd.push_str(&format!(" --type={}", match self.traffic_type {
+                                0 => "icmp",
+                                1 => "udp",
+                                _ => "unknown",
+                            }));
+                            if !self.traffic_interval.trim().is_empty() {
+                                cmd.push_str(&format!(" --interval={}", self.traffic_interval.trim()));
+                            }
+                            cmd.push_str("\r\n");
+                            let _ = self.send_tx.send(cmd);
+                        }
+
+                            ui.add_space(16.0); // Space between sections
+
+                            // --- Set Network Section ---
+                            ui.heading("Set Network");
+                            ui.checkbox(&mut self.enable_set_network, "Enable Set Network");
+                            ui.horizontal(|ui| {
+                                ui.label("Architecture:");
+                                egui::ComboBox::from_id_source("architecture_combo")
+                                    .selected_text(match self.network_architecture {
+                                        0 => "rsta",
+                                        1 => "rapsta",
+                                        2 => "apsta",
+                                        3 => "sniff",
+                                        _ => "Unknown",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut self.network_architecture, 0, "rsta");
+                                        ui.selectable_value(&mut self.network_architecture, 1, "rapsta");
+                                        ui.selectable_value(&mut self.network_architecture, 2, "apsta");
+                                        ui.selectable_value(&mut self.network_architecture, 3, "sniff");
+                                    });
+                            });
+                            if ui.button("Set Network").clicked() && self.enable_set_network {
+                                let arch = match self.network_architecture {
+                                    0 => "rsta",
+                                    1 => "rapsta",
+                                    2 => "apsta",
+                                    3 => "sniff",
+                                    _ => "unknown",
+                                };
+                                let cmd = format!("set-network --arch={}\r\n", arch);
+                                let _ = self.send_tx.send(cmd);
+                            }
+                        });
+                        ui.add_space(16.0); // Space between sections
+
+                    //     // --- Set CSI Section ---
+                    //     ui.heading("Set CSI");
+
+                    //     ui.horizontal(|ui| {
+                    //     if ui.button("Disable LLTF").clicked() {
+                    //         // TODO: handle --disable-lltf
+                    //     }
+                    //     if ui.button("Disable HTLTF").clicked() {
+                    //         // TODO: handle --disable-htltf
+                    //     }
+                    // });
+                    //     ui.horizontal(|ui| {
+                    //         if ui.button("Disable STBC HTLTF").clicked() {
+                    //             // TODO: handle --disable-stbc-htltf
+                    //         }
+                    //         if ui.button("Disable LTF Merge").clicked() {
+                    //             // TODO: handle --disable-ltf-merge
+                    //         }
+                    //     });
+
+                    // --- Set CSI Section ---
+                    // ui.heading("Set CSI");
+                    // ui.checkbox(&mut self.enable_set_csi, "Enable Set CSI");
+                    // ui.checkbox(&mut self.csi_disable_lltf, "Disable LLTF");
+                    // ui.checkbox(&mut self.csi_disable_htltf, "Disable HTLTF");
+                    // ui.checkbox(&mut self.csi_disable_stbc_htltf, "Disable STBC HTLTF");
+                    // ui.checkbox(&mut self.csi_disable_ltf_merge, "Disable LTF Merge");
+                    ui.heading("Set CSI");
+                    ui.checkbox(&mut self.csi_disable_lltf, "Disable LLTF");
+                    ui.checkbox(&mut self.csi_disable_htltf, "Disable HTLTF");
+                    ui.checkbox(&mut self.csi_disable_stbc_htltf, "Disable STBC HTLTF");
+                    ui.checkbox(&mut self.csi_disable_ltf_merge, "Disable LTF Merge");
+                    if ui.button("Set CSI").clicked() && self.enable_set_csi {
+                        let mut cmd = String::from("set-csi");
+                        if self.csi_disable_lltf {
+                            cmd.push_str(" --disable-lltf");
+                        }
+                        if self.csi_disable_htltf {
+                            cmd.push_str(" --disable-htltf");
+                        }
+                        if self.csi_disable_stbc_htltf {
+                            cmd.push_str(" --disable-stbc-htltf");
+                        }
+                        if self.csi_disable_ltf_merge {
+                            cmd.push_str(" --disable-ltf-merge");
+                        }
+                        cmd.push_str("\r\n");
+                        let _ = self.send_tx.send(cmd);
+                    }
+                        
+                        ui.add_space(16.0);
+
+                        // --- Set WiFi Section ---
+                        // ui.heading("Set WiFi");
+                        // ui.checkbox(&mut self.enable_set_wifi, "Enable Set WiFi");
+                        // ui.horizontal(|ui| {
+                        //     ui.label("Mode:");
+                        //     egui::ComboBox::from_id_source("wifi_mode_combo")
+                        //         .selected_text(match self.wifi_mode {
+                        //             0 => "ap",
+                        //             1 => "station",
+                        //             2 => "sniffer",
+                        //             3 => "ap-station",
+                        //             _ => "sniffer",
+                        //         })
+                        //         .show_ui(ui, |ui| {
+                        //             ui.selectable_value(&mut self.wifi_mode, 0, "ap");
+                        //             ui.selectable_value(&mut self.wifi_mode, 1, "station");
+                        //             ui.selectable_value(&mut self.wifi_mode, 2, "sniffer");
+                        //             ui.selectable_value(&mut self.wifi_mode, 3, "ap-station");
+                        //         });
+                        // });
+                        // ui.horizontal(|ui| {
+                        //     ui.label("Max Connections:");
+                        //     ui.text_edit_singleline(&mut self.wifi_max_connections);
+                        // });
+                        // ui.checkbox(&mut self.wifi_hide_ssid, "Hide SSID (AP only)");
+                        // ui.horizontal(|ui| {
+                        //     ui.label("AP SSID:");
+                        //     ui.text_edit_singleline(&mut self.wifi_ap_ssid);
+                        // });
+                        // ui.horizontal(|ui| {
+                        //     ui.label("AP Password:");
+                        //     ui.text_edit_singleline(&mut self.wifi_ap_password);
+                        // });
+                        // ui.horizontal(|ui| {
+                        //     ui.label("STA SSID:");
+                        //     ui.text_edit_singleline(&mut self.wifi_sta_ssid);
+                        // });
+                        // ui.horizontal(|ui| {
+                        //     ui.label("STA Password:");
+                        //     ui.text_edit_singleline(&mut self.wifi_sta_password);
+                        // });
+                        // if ui.button("Set WiFi").clicked() && self.enable_set_wifi {
+                        //     let mut cmd = String::from("set-wifi");
+                        //     cmd.push_str(&format!(" --mode={}", match self.wifi_mode {
+                        //         0 => "ap",
+                        //         1 => "station",
+                        //         2 => "sniffer",
+                        //         3 => "ap-station",
+                        //         _ => "sniffer",
+                        //     }));
+                        //     if !self.wifi_max_connections.trim().is_empty() {
+                        //         cmd.push_str(&format!(" --max-connections={}", self.wifi_max_connections.trim()));
+                        //     }
+                        //     if self.wifi_hide_ssid {
+                        //         cmd.push_str(" --hide-ssid");
+                        //     }
+                        //     if !self.wifi_ap_ssid.trim().is_empty() {
+                        //         cmd.push_str(&format!(" --ap-ssid={}", self.wifi_ap_ssid.trim()));
+                        //     }
+                        //     if !self.wifi_ap_password.trim().is_empty() {
+                        //         cmd.push_str(&format!(" --ap-password={}", self.wifi_ap_password.trim()));
+                        //     }
+                        //     if !self.wifi_sta_ssid.trim().is_empty() {
+                        //         cmd.push_str(&format!(" --sta-ssid={}", self.wifi_sta_ssid.trim()));
+                        //     }
+                        //     if !self.wifi_sta_password.trim().is_empty() {
+                        //         cmd.push_str(&format!(" --sta-password={}", self.wifi_sta_password.trim()));
+                        //     }
+                        //     cmd.push_str("\r\n");
+                        //     let _ = self.send_tx.send(cmd);
+                        // }
+
+                        ui.heading("Set WiFi");
+                        ui.checkbox(&mut self.enable_set_wifi, "Enable Set WiFi");
+
+                        ui.horizontal(|ui| {
+                            ui.label("Mode:");
+                            egui::ComboBox::from_id_source("wifi_mode_combo")
+                                .selected_text(match self.wifi_mode {
+                                    0 => "ap",
+                                    1 => "station",
+                                    2 => "sniffer",
+                                    3 => "ap-station",
+                                    _ => "sniffer",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut self.wifi_mode, 0, "ap");
+                                    ui.selectable_value(&mut self.wifi_mode, 1, "station");
+                                    ui.selectable_value(&mut self.wifi_mode, 2, "sniffer");
+                                    ui.selectable_value(&mut self.wifi_mode, 3, "ap-station");
+                                });
+                        });
+
+                        // Logic for graying out and clearing fields
+                        let is_sniffer = self.wifi_mode == 2;
+                        let is_station = self.wifi_mode == 1;
+                        let is_ap = self.wifi_mode == 0;
+                        let is_apsta = self.wifi_mode == 3;
+
+                        if is_sniffer {
+                            self.wifi_max_connections.clear();
+                            self.wifi_hide_ssid = false;
+                            self.wifi_ap_ssid.clear();
+                            self.wifi_ap_password.clear();
+                            self.wifi_sta_ssid.clear();
+                            self.wifi_sta_password.clear();
+                        }
+                        if is_station {
+                            self.wifi_ap_ssid.clear();
+                            self.wifi_ap_password.clear();
+                        }
+                        if is_ap {
+                            self.wifi_sta_ssid.clear();
+                            self.wifi_sta_password.clear();
+                        }
+
+                        // Max Connections
+                        ui.horizontal(|ui| {
+                            ui.label("Max Connections:");
+                            ui.add_enabled_ui(!is_sniffer, |ui| {
+                                ui.text_edit_singleline(&mut self.wifi_max_connections);
+                            });
+                        });
+
+                        // Hide SSID
+                        ui.add_enabled_ui(!is_sniffer, |ui| {
+                            ui.checkbox(&mut self.wifi_hide_ssid, "Hide SSID (AP only)");
+                        });
+
+                        // AP SSID and Password
+                        ui.horizontal(|ui| {
+                            ui.label("AP SSID:");
+                            ui.add_enabled_ui(is_ap || is_apsta, |ui| {
+                                ui.text_edit_singleline(&mut self.wifi_ap_ssid);
+                            });
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("AP Password:");
+                            ui.add_enabled_ui(is_ap || is_apsta, |ui| {
+                                ui.text_edit_singleline(&mut self.wifi_ap_password);
+                            });
+                        });
+
+                        // STA SSID and Password
+                        ui.horizontal(|ui| {
+                            ui.label("STA SSID:");
+                            ui.add_enabled_ui(is_station || is_apsta, |ui| {
+                                ui.text_edit_singleline(&mut self.wifi_sta_ssid);
+                            });
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("STA Password:");
+                            ui.add_enabled_ui(is_station || is_apsta, |ui| {
+                                ui.text_edit_singleline(&mut self.wifi_sta_password);
+                            });
+                        });
+
+                        if ui.button("Set WiFi").clicked() && self.enable_set_wifi {
+                            use std::{thread, time::Duration};
+                            let mode_str = match self.wifi_mode {
+                                0 => "ap",
+                                1 => "station",
+                                2 => "sniffer",
+                                3 => "ap-station",
+                                _ => "sniffer",
+                            };
+
+                            // Always send mode first
+                            let cmd = format!("set-wifi --mode={}\r\n", mode_str);
+                            let _ = self.send_tx.send(cmd);
+                            thread::sleep(Duration::from_millis(150));
+
+                            // Only send if not sniffer
+                            if self.wifi_mode != 2 {
+                                if !self.wifi_max_connections.trim().is_empty() {
+                                    let cmd = format!("set-wifi --max-connections={}\r\n", self.wifi_max_connections.trim());
+                                    let _ = self.send_tx.send(cmd);
+                                    thread::sleep(Duration::from_millis(150));
+                                }
+                                if self.wifi_hide_ssid {
+                                    let cmd = "set-wifi --hide-ssid\r\n".to_string();
+                                    let _ = self.send_tx.send(cmd);
+                                    thread::sleep(Duration::from_millis(150));
+                                }
+                            }
+
+                            // AP options
+                            if self.wifi_mode == 0 || self.wifi_mode == 3 {
+                                if !self.wifi_ap_ssid.trim().is_empty() {
+                                    let cmd = format!("set-wifi --ap-ssid={}\r\n", self.wifi_ap_ssid.trim());
+                                    let _ = self.send_tx.send(cmd);
+                                    thread::sleep(Duration::from_millis(150));
+                                }
+                                if !self.wifi_ap_password.trim().is_empty() {
+                                    let cmd = format!("set-wifi --ap-password={}\r\n", self.wifi_ap_password.trim());
+                                    let _ = self.send_tx.send(cmd);
+                                    thread::sleep(Duration::from_millis(150));
+                                }
+                            }
+
+                            // STA options
+                            if self.wifi_mode == 1 || self.wifi_mode == 3 {
+                                if !self.wifi_sta_ssid.trim().is_empty() {
+                                    let cmd = format!("set-wifi --sta-ssid={}\r\n", self.wifi_sta_ssid.trim());
+                                    let _ = self.send_tx.send(cmd);
+                                    thread::sleep(Duration::from_millis(150));
+                                }
+                                if !self.wifi_sta_password.trim().is_empty() {
+                                    let cmd = format!("set-wifi --sta-password={}\r\n", self.wifi_sta_password.trim());
+                                    let _ = self.send_tx.send(cmd);
+                                    thread::sleep(Duration::from_millis(150));
+                                }
+                            }
+                        }
+                        
+                        //this does not work yet
+                        // --- Ctrl R Section ---
+                        ui.add_space(16.0);
+                        ui.heading("Ctrl R");
+                        if ui.button("Send Ctrl R").clicked() {
+                            let _ = self.send_tx.send("__RESET__\r\n".to_string()); // send Ctrl+R to the device
+                        }
+
+                        
+                        // --- Show Config Section ---
+                        ui.add_space(16.0);
+                        ui.heading("Show Config");
+                        if ui.button("Show Config").clicked() {
+                            let _ = self.send_tx.send("show-config\r\n".to_string());
+                        }
+
+                        ui.add_space(16.0);
+                        ui.heading("Rest Config");
+                        if ui.button("Reset Config").clicked() {
+                            let _ = self.send_tx.send("reset-config\r\n".to_string());
+                        }
+                        
+                        
+
                         CollapsingHeader::new("Plot Settings")
                             .default_open(true)
                             .show(ui, |ui| {
